@@ -269,13 +269,21 @@ object PodcastDownloader {
         // Complete on disk from here on: "stop" must not leave a file outside the index
         // (it would be swept as a stray at the next start).
         return withContext(NonCancellable) {
-            // Kept encrypted, like every download: it only plays in Myspoti, on this phone.
-            runInterruptible(Dispatchers.IO) { OfflineCrypto.encryptInPlace(Graph.app, out) }
             val cover = runCatching {
                 val c = File(OfflineStore.coverDir, "$base.jpg")
                 fetchCover(r.coverUrl, c)
                 c.name
             }.getOrDefault("")
+            // Fork: also save a playable, tagged copy in Download/Spotifusion/ while the file
+            // is still clear (the private copy is encrypted below).
+            runInterruptible(Dispatchers.IO) {
+                SharedAudioExporter.tryExport(
+                    Graph.app, r.trackId, out,
+                    SharedAudioExporter.Meta(r.title, r.artist, r.album, cover.takeIf { it.isNotBlank() }?.let { File(OfflineStore.coverDir, it) }),
+                )
+            }
+            // Kept encrypted, like every download: it only plays in Myspoti, on this phone.
+            runInterruptible(Dispatchers.IO) { OfflineCrypto.encryptInPlace(Graph.app, out) }
             OfflineTrack(
                 trackId = r.trackId, title = r.title, artist = r.artist, album = r.album,
                 albumId = "", durationMs = r.durationMs, coverUrl = r.coverUrl,

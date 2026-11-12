@@ -25,8 +25,9 @@ android {
     val version = (findProperty("appVersionName") as String?) ?: "1.1.4"
     val beta = findProperty("appVersionName") == null || version.contains("-")
     defaultConfig {
-        applicationId = "com.spotifusion.app"
-        manifestPlaceholders["appLabel"] = "Spotifusion"
+        // Fork: its own id, so it installs next to the original Spotifusion (com.spotifusion.app).
+        applicationId = "com.mrmundysr.spotifusion"
+        manifestPlaceholders["appLabel"] = "Spotifusion Fork"
         minSdk = 29
         targetSdk = 36
         // CI release builds pass the tag's version (-PappVersionName / -PappVersionCode).
@@ -72,7 +73,7 @@ android {
         debug {
             // Installs next to the release apps (own data, own sign-in).
             applicationIdSuffix = ".dev"
-            manifestPlaceholders["appLabel"] = "Spotifusion"
+            manifestPlaceholders["appLabel"] = "Spotifusion Fork"
         }
         release {
             // Real key when provided (CI releases); otherwise the debug key, so a local

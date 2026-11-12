@@ -1,3 +1,8 @@
+> **Fork notice.** This is a personal fork of [p1di/spotifusion](https://github.com/p1di/spotifusion)
+> (GPL-3.0, © its authors). Downloaded audio is additionally saved to `Download/Spotifusion/` and the app
+> installs next to the original as `com.mrmundysr.spotifusion`. See [CHANGES-FORK.md](CHANGES-FORK.md).
+> Source code for this build is this repository.
+
 # Spotifusion
 
 <p align="center">

@@ -282,11 +282,19 @@ object OfflineDownloader {
             }
 
             return withContext(NonCancellable) {
-                runInterruptible(Dispatchers.IO) { OfflineCrypto.encryptInPlace(Graph.app, out) }
                 val cover = runCatching {
                     val c = File(OfflineStore.coverDir, "${r.trackId}.jpg")
                     httpGet(meta.coverUrl, c); c.name
                 }.getOrDefault("")
+                // Fork: also save a playable, tagged copy in Download/Spotifusion/ while the file
+                // is still clear (the private copy below is encrypted).
+                runInterruptible(Dispatchers.IO) {
+                    SharedAudioExporter.tryExport(
+                        Graph.app, r.trackId, out,
+                        SharedAudioExporter.Meta(meta.title, meta.artist, meta.album, cover.takeIf { it.isNotBlank() }?.let { File(OfflineStore.coverDir, it) }),
+                    )
+                }
+                runInterruptible(Dispatchers.IO) { OfflineCrypto.encryptInPlace(Graph.app, out) }
                 OfflineTrack(
                     trackId = r.trackId, title = meta.title, artist = meta.artist, album = meta.album,
                     albumId = meta.albumId, durationMs = meta.durationMs, coverUrl = meta.coverUrl,

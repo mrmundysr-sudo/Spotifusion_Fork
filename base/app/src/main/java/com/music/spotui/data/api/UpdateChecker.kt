@@ -23,7 +23,7 @@ object UpdateChecker {
     private val http by lazy { OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).addInterceptor(com.music.spotui.data.DataSaver.interceptor).build() }
 
     suspend fun check(context: Context, force: Boolean = false): Release? = withContext(Dispatchers.IO) {
-        val repo = BuildConfig.UPDATE_REPO.ifBlank { "p1di/spotifusion" }
+        val repo = BuildConfig.UPDATE_REPO.ifBlank { "mrmundysr-sudo/Spotifusion_Fork" }
         if (repo.isBlank()) return@withContext null
         val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
