@@ -72,8 +72,13 @@ object SharedAudioExporter {
                 throw e
             }
             prefs.edit().putString(key, uri.toString()).apply()
-            Log.i(TAG, "saved $name -> $uri")
-            return Result(uri, name, alreadyExported = false)
+            // MediaStore renames a name that is taken ("Name (1).m4a"): report the real one.
+            val finalName = runCatching {
+                resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            }.getOrNull() ?: name
+            Log.i(TAG, "saved $finalName -> $uri")
+            return Result(uri, finalName, alreadyExported = false)
         } finally {
             prepared.delete()
         }

@@ -30,11 +30,20 @@ class SharedAudioExporterTest {
             inst.context.assets.open("export/$name").use { i -> f.outputStream().use { i.copyTo(it) } }
         }
 
+    private fun durationOf(f: File): Int {
+        val p = MediaPlayer()
+        try {
+            p.setDataSource(f.path); p.prepare(); return p.duration
+        } finally {
+            p.release()
+        }
+    }
+
     private fun publicFile(displayName: String) =
         File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Spotifusion/$displayName")
 
     /** Plays [uri] with the platform player alone and reads its tags back. */
-    private fun assertPlaysAndTagged(uri: android.net.Uri, title: String, artist: String, album: String) {
+    private fun assertPlaysAndTagged(uri: android.net.Uri, title: String, artist: String, album: String, untaggedDuration: Int) {
         val mmr = MediaMetadataRetriever()
         context.contentResolver.openFileDescriptor(uri, "r")!!.use { mmr.setDataSource(it.fileDescriptor) }
         assertEquals(title, mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE))
@@ -46,7 +55,10 @@ class SharedAudioExporterTest {
         try {
             context.contentResolver.openFileDescriptor(uri, "r")!!.use { player.setDataSource(it.fileDescriptor) }
             player.prepare()
-            assertTrue("duration ${player.duration}", player.duration in 1000..2500)
+            // A fragmented MP4 without a sidx has no duration for Android (-1) even untagged:
+            // the export must report whatever the untouched fixture reports.
+            assertEquals(untaggedDuration, player.duration)
+            if (untaggedDuration != -1) assertTrue("duration ${player.duration}", player.duration in 1000..2500)
             player.start()
             Thread.sleep(300)
             assertTrue(player.isPlaying)
@@ -78,7 +90,7 @@ class SharedAudioExporterTest {
             assertEquals(0, c.getInt(1))
             assertEquals(r.displayName, c.getString(2))
         }
-        assertPlaysAndTagged(r.uri, title, artist, "Álbum $tag")
+        assertPlaysAndTagged(r.uri, title, artist, "Álbum $tag", durationOf(fixture(fixtureName)))
 
         // The same track again: no second file.
         val again = SharedAudioExporter.export(context, key, fixture(fixtureName), SharedAudioExporter.Meta(title, artist, "Álbum $tag"))
