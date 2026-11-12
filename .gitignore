@@ -1,0 +1,36 @@
+# build outputs
+build/
+.gradle/
+.kotlin/
+*.apk
+*.zip
+dist/
+local.properties
+# device captures (logs can contain session data)
+tools/captures/
+base/tools/captures/
+__pycache__/
+.idea/
+PROMPT-*.md
+# internal working notes (account, device, local paths): kept on the machine, never published
+HANDOFF.md
+ANNEXE-ETAT.txt
+docs/RESTE-A-FAIRE.md
+tools/handoff_state.sh
+REDDIT-*.md
+
+# Local root working directory mirrors (code lives in base/)
+/app/
+/api/
+/api-spotify/
+/host-android/
+/host-cdp/
+/licenses/
+/gradle/
+/gradlew
+/gradlew.bat
+/build.gradle.kts
+/settings.gradle.kts
+/gradle.properties
+/APP_DOCUMENTATION.md
+/assets/Spotify Screenshots/

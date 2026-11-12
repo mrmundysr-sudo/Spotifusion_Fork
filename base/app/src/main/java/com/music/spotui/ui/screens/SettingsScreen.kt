@@ -1,0 +1,831 @@
+package com.music.spotui.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import app.myspoti.engine.R
+import kotlinx.coroutines.launch
+import com.music.spotui.ui.components.DownloadQualityPicker
+import com.music.spotui.ui.components.StreamingQualityPicker
+import com.music.spotui.ui.theme.AppBackground
+
+/**
+ * Settings, on one page: sound quality (streaming and downloads), the lossless source,
+ * data and battery, display, language, and the player's own repair tools.
+ */
+@Composable
+fun SettingsScreen(navController: NavController) {
+    val energy by app.myspoti.power.EnergySettings.state.collectAsStateWithLifecycle()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxSize().background(AppBackground).statusBarsPadding()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+            IconButton(onClick = { navController.popBackStack() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.accessibility_navigate_back), tint = Color.White)
+            }
+            Text(stringResource(R.string.settings_title), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+            Section(R.string.settings_section_playback)
+            StreamingQualityPicker()
+            OptionRow(
+                label = stringResource(R.string.settings_autoplay_title),
+                detail = stringResource(R.string.settings_autoplay_detail),
+                checked = com.music.spotui.data.preferences.AutoplayPref.on,
+                onChecked = { com.music.spotui.data.preferences.AutoplayPref.set(ctx, it) },
+            )
+            CrossfadeRow()
+            Divider()
+
+            Section(R.string.settings_section_downloads)
+            DownloadQualityPicker()
+            if (com.music.spotui.data.offline.OfflineStore.tracks.isNotEmpty()) RemoveDownloadsRow()
+            Divider()
+
+            PlaybackCachingSection()
+
+            Section(R.string.settings_section_data)
+            OptionRow(
+                label = stringResource(R.string.energy_saver_title),
+                detail = stringResource(R.string.energy_saver_summary),
+                checked = energy.manualSaver,
+                onChecked = app.myspoti.power.EnergySettings::setSaver,
+            )
+            OptionRow(
+                label = stringResource(R.string.data_saver_title),
+                detail = stringResource(R.string.data_saver_summary),
+                checked = com.music.spotui.data.DataSaver.enabled,
+                onChecked = com.music.spotui.data.DataSaver::set,
+            )
+            // Battery optimization off = music and Connect keep going with the screen off.
+            var exempt by remember { androidx.compose.runtime.mutableStateOf(app.myspoti.power.BatteryExemption.isExempt(ctx)) }
+            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                exempt = app.myspoti.power.BatteryExemption.isExempt(ctx)
+            }
+            OptionRow(
+                label = stringResource(R.string.background_playback_title),
+                detail = stringResource(if (exempt) R.string.background_playback_on else R.string.background_playback_off),
+                checked = exempt,
+                onChecked = {
+                    if (exempt) ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    else app.myspoti.power.BatteryExemption.request(ctx)
+                },
+            )
+            Divider()
+
+            Section(R.string.settings_section_display)
+            OptionRow(
+                label = stringResource(R.string.settings_amoled_theme),
+                detail = stringResource(R.string.settings_amoled_theme_subtitle),
+                checked = energy.blackPreference,
+                onChecked = app.myspoti.power.EnergySettings::setBlackBackground,
+            )
+            OptionRow(
+                label = stringResource(R.string.settings_item_canvas_title),
+                detail = stringResource(if (energy.policy.saverEnabled) R.string.energy_saver_summary else R.string.video_settings_canvas_subtitle),
+                checked = energy.canvasEnabled && !energy.policy.saverEnabled,
+                enabled = !energy.policy.saverEnabled,
+                onChecked = app.myspoti.power.EnergySettings::setCanvasEnabled,
+            )
+            OptionRow(
+                label = stringResource(R.string.settings_solid_nav_title),
+                detail = stringResource(R.string.settings_solid_nav_detail),
+                checked = com.music.spotui.data.preferences.SolidNavBar.on,
+                onChecked = { com.music.spotui.data.preferences.SolidNavBar.set(ctx, it) },
+            )
+            OptionRow(
+                label = "Lyrics under cover art",
+                detail = "Show animated current lyric line beneath the album cover on the Now Playing screen",
+                checked = com.music.spotui.data.preferences.LyricsUnderCoverPref.on,
+                onChecked = { com.music.spotui.data.preferences.LyricsUnderCoverPref.set(ctx, it) },
+            )
+            AccentRow()
+            OrientationRow()
+            LanguageRow()
+            Divider()
+
+            Section(R.string.settings_section_app)
+            // A18: the launch check can be turned off; the manual check below keeps working.
+            OptionRow(
+                label = stringResource(R.string.settings_auto_update_title),
+                detail = stringResource(R.string.settings_auto_update_detail),
+                checked = com.music.spotui.data.preferences.AutoUpdateCheckPref.on,
+                onChecked = { com.music.spotui.data.preferences.AutoUpdateCheckPref.set(ctx, it) },
+            )
+            CheckUpdateRow()
+            // The hidden Web Player stuck or crashed: rebuild it without leaving the app.
+            Column(
+                Modifier.fillMaxWidth().clickable { kotlinx.coroutines.MainScope().launch { android.widget.Toast.makeText(ctx, "Restarting player engine…", android.widget.Toast.LENGTH_SHORT).show(); com.music.spotui.di.SongPlayer.restartPlayerEngine(); android.widget.Toast.makeText(ctx, "Player engine restarted", android.widget.Toast.LENGTH_SHORT).show() } }
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+            ) {
+                Text(stringResource(R.string.restart_player_title), color = Color.White, fontSize = 16.sp)
+                Text(stringResource(R.string.restart_player_detail), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+            }
+            // The report a tester hands us. The engine's log is otherwise reachable only through
+            // adb logcat, which the person reporting the bug cannot run: the label is a literal
+            // rather than a string resource so this change stays out of the shared string files.
+            Column(
+                Modifier.fillMaxWidth().clickable {
+                    val file = runCatching { app.myspoti.host.android.Logbook.export(ctx) }.getOrNull()
+                    if (file != null) shareDiagnosticReport(ctx, file)
+                    else android.widget.Toast.makeText(ctx, ctx.getString(R.string.diagnostic_export_failed), android.widget.Toast.LENGTH_SHORT).show()
+                }.padding(horizontal = 20.dp, vertical = 10.dp),
+            ) {
+                Text(stringResource(R.string.diagnostic_export_title), color = Color.White, fontSize = 16.sp)
+                Text(stringResource(R.string.diagnostic_export_detail), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+            }
+            Divider()
+            AutoRestartPlayerSection()
+            DeveloperModeSection()
+            Spacer(Modifier.height(96.dp))
+        }
+    }
+}
+
+@Composable
+private fun Section(title: Int) {
+    Text(stringResource(title).uppercase(), color = com.music.spotui.ui.theme.AppAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp))
+}
+
+@Composable
+private fun Divider() = HorizontalDivider(color = Color(0xFF2A2A2A), modifier = Modifier.padding(top = 8.dp))
+
+/** The app's accent colour, for everyone (the same palette the supporter sheet uses). */
+@Composable
+private fun AccentRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(stringResource(R.string.supporter_accent), color = Color.White, fontSize = 16.sp)
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp), modifier = Modifier.padding(top = 10.dp)) {
+            for (a in com.music.spotui.data.api.SupportReminder.Accent.entries) {
+                val selected = com.music.spotui.data.api.SupportReminder.accent == a
+                val name = stringResource(when (a) {
+                    com.music.spotui.data.api.SupportReminder.Accent.GREEN -> R.string.color_green
+                    com.music.spotui.data.api.SupportReminder.Accent.BLUE -> R.string.color_blue
+                    com.music.spotui.data.api.SupportReminder.Accent.PURPLE -> R.string.color_purple
+                    com.music.spotui.data.api.SupportReminder.Accent.PINK -> R.string.color_pink
+                    com.music.spotui.data.api.SupportReminder.Accent.ORANGE -> R.string.color_orange
+                })
+                Box(
+                    Modifier.size(40.dp)
+                        .semantics { contentDescription = name; role = Role.RadioButton }
+                        .clip(CircleShape).background(a.color)
+                        .then(if (selected) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
+                        .clickable { com.music.spotui.data.api.SupportReminder.setAccent(ctx, a) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Crossfade": the length of the fade at the end of a song. The label says what it is: the two
+ * songs never overlap (the page plays one media element), so this is a fade, not a true
+ * crossfade. The default is 0: off, as before.
+ */
+@Composable
+private fun CrossfadeRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pref = com.music.spotui.data.preferences.CrossfadePref
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(stringResource(R.string.settings_crossfade_title), color = Color.White, fontSize = 16.sp)
+        Text(
+            stringResource(R.string.settings_crossfade_detail),
+            color = Color(0xFFB3B3B3), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 10.dp),
+        ) {
+            for (v in listOf(0, 3, 6, 9, 12)) {
+                val selected = pref.seconds == v
+                Text(
+                    if (v == 0) stringResource(R.string.settings_crossfade_off)
+                    else stringResource(R.string.settings_crossfade_seconds, v),
+                    color = if (selected) Color.Black else Color.White, fontSize = 14.sp,
+                    modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .background(if (selected) com.music.spotui.ui.theme.AppAccent else Color(0xFF2A2A2A))
+                        .clickable { pref.set(ctx, v) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Screen rotation: portrait (default), automatic or landscape. */
+@Composable
+private fun OrientationRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pref = com.music.spotui.data.preferences.OrientationPref
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(stringResource(R.string.settings_rotation_title), color = Color.White, fontSize = 16.sp)
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
+            for ((value, label) in listOf(
+                pref.PORTRAIT to R.string.settings_rotation_portrait,
+                pref.AUTO to R.string.settings_rotation_auto,
+                pref.LANDSCAPE to R.string.settings_rotation_landscape,
+            )) {
+                val selected = pref.mode == value
+                Text(
+                    stringResource(label),
+                    color = if (selected) Color.Black else Color.White, fontSize = 14.sp,
+                    modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .background(if (selected) com.music.spotui.ui.theme.AppAccent else Color(0xFF2A2A2A))
+                        .clickable { pref.set(ctx, value) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+/** "App language": Automatic (French or English) or any language with Spotify's labels. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val current = remember { com.music.spotui.data.AppLanguage.current(ctx) }
+    var picking by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val auto = stringResource(R.string.language_auto)
+    fun label(tag: String) = if (tag == com.music.spotui.data.AppLanguage.SYSTEM) auto else com.music.spotui.data.AppLanguage.nativeName(tag)
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().clickable { picking = true }.padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text(stringResource(R.string.settings_item_app_language_title), color = Color.White, fontSize = 16.sp)
+        Text(label(current), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+    }
+    if (picking) androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = { picking = false },
+        containerColor = Color(0xFF282828),
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            item {
+                Text(stringResource(R.string.settings_item_app_language_title), color = Color.White, fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                Text(stringResource(R.string.language_partial_note), color = Color(0xFFB3B3B3), fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp))
+            }
+            items(com.music.spotui.data.AppLanguage.AVAILABLE.size) { i ->
+                val tag = com.music.spotui.data.AppLanguage.AVAILABLE[i]
+                val selected = tag == current
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable {
+                        picking = false
+                        if (!selected) {
+                            com.music.spotui.data.AppLanguage.apply(ctx, tag)
+                            // Screens take the new language when the activity is rebuilt.
+                            generateSequence(ctx) { (it as? android.content.ContextWrapper)?.baseContext }
+                                .filterIsInstance<android.app.Activity>().firstOrNull()?.recreate()
+                        }
+                    }.padding(horizontal = 20.dp, vertical = 8.dp),
+                ) {
+                    androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                        Text(label(tag), color = if (selected) com.music.spotui.ui.theme.AppAccent else Color.White, fontSize = 16.sp)
+                        if (tag == com.music.spotui.data.AppLanguage.SYSTEM)
+                            Text(stringResource(R.string.language_auto_detail), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+                    }
+                    if (selected) androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Check, null, tint = com.music.spotui.ui.theme.AppAccent)
+                }
+            }
+        }
+    }
+}
+
+/** "Remove all downloads", with the space they take; asks first, like the official app. */
+@Composable
+private fun RemoveDownloadsRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var ask by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val size = android.text.format.Formatter.formatShortFileSize(ctx, com.music.spotui.data.offline.OfflineStore.totalBytes())
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().clickable { ask = true }.padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text(stringResource(R.string.settings_item_remove_downloads_title), color = Color.White, fontSize = 16.sp)
+        Text(stringResource(R.string.downloads_size, size), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+    }
+    if (ask) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { ask = false },
+        containerColor = Color(0xFF282828),
+        title = { Text(stringResource(R.string.settings_storage_remove_downloads_dialog_title), color = Color.White) },
+        text = { Text(stringResource(R.string.playlist_entity_remove_download_dialog_description), color = Color(0xFFB3B3B3)) },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                ask = false
+                com.music.spotui.data.offline.OfflineDownloader.removeAll()
+            }) { Text(stringResource(R.string.playlist_entity_remove_download_dialog_positive_button), color = com.music.spotui.ui.theme.AppAccent) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = { ask = false }) {
+                Text(stringResource(R.string.add_to_playlist_button_cancel), color = Color.White)
+            }
+        },
+    )
+}
+
+
+
+@Composable
+private fun OptionRow(label: String, detail: String, checked: Boolean,
+    enabled: Boolean = true, onChecked: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+            .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChecked)
+            .padding(horizontal = 20.dp, vertical = 10.dp)) {
+        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 16.sp)
+            Text(detail, color = Color(0xFFB3B3B3), fontSize = 12.sp)
+        }
+        androidx.compose.material3.Switch(checked = checked, enabled = enabled, onCheckedChange = null)
+    }
+}
+
+/** "Check for updates now": the launch check can be off; this one always asks. */
+@Composable
+private fun CheckUpdateRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var checking by remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth().clickable(enabled = !checking) {
+            if (checking) return@clickable
+            checking = true
+            scope.launch {
+                val found = runCatching { com.music.spotui.data.api.UpdateChecker.check(ctx, force = true) }.getOrNull()
+                checking = false
+                // The card is the app's one update UI: fill it, it shows itself.
+                if (found != null) com.music.spotui.updateRelease.value = found
+                else android.widget.Toast.makeText(ctx, ctx.getString(R.string.settings_update_check_latest), android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }.padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text(
+            stringResource(if (checking) R.string.settings_update_checking else R.string.settings_check_update_title),
+            color = Color.White, fontSize = 16.sp,
+        )
+        Text(stringResource(R.string.settings_check_update_detail), color = Color(0xFFB3B3B3), fontSize = 12.sp)
+    }
+}
+
+/**
+ * Hands the exported report to the share sheet. The file goes through the app's FileProvider;
+ * if the provider refuses the path (external storage absent), the report's own path is shared
+ * instead, so the tester still has something to send.
+ */
+private fun shareDiagnosticReport(context: android.content.Context, file: java.io.File) {
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(android.content.Intent.EXTRA_SUBJECT, "Myspoti diagnostic report")
+    }
+    val uri = runCatching {
+        androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }.getOrNull()
+    if (uri != null) {
+        send.type = "application/octet-stream"
+        send.putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        send.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    } else {
+        send.putExtra(android.content.Intent.EXTRA_TEXT, "Myspoti diagnostic report: ${file.absolutePath}")
+    }
+    context.startActivity(android.content.Intent.createChooser(send, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
+@Composable
+private fun PlaybackCachingSection() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Section(R.string.settings_section_caching)
+    OptionRow(
+        label = stringResource(R.string.settings_preloading_title),
+        detail = stringResource(R.string.settings_preloading_detail),
+        checked = com.music.spotui.data.preferences.CacheSettingsPref.preloadingEnabled,
+        onChecked = { com.music.spotui.data.preferences.CacheSettingsPref.setEnabled(ctx, it) },
+    )
+    if (com.music.spotui.data.preferences.CacheSettingsPref.preloadingEnabled) {
+        PreloadDepthRow()
+        CacheCapRow()
+        ClearCacheRow()
+    }
+    Divider()
+}
+
+@Composable
+private fun PreloadDepthRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pref = com.music.spotui.data.preferences.CacheSettingsPref
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(stringResource(R.string.settings_preload_depth_title), color = Color.White, fontSize = 16.sp)
+        Text(
+            stringResource(R.string.settings_preload_depth_detail),
+            color = Color(0xFFB3B3B3), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .horizontalScroll(rememberScrollState()),
+        ) {
+            for (count in listOf(1, 2, 3, 5, 8, 10)) {
+                val selected = pref.preloadCount == count
+                Text(
+                    "$count ${if (count == 1) "track" else "tracks"}",
+                    color = if (selected) Color.Black else Color.White, fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) com.music.spotui.ui.theme.AppAccent else Color(0xFF282828))
+                        .clickable { pref.setCount(ctx, count) }
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CacheCapRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pref = com.music.spotui.data.preferences.CacheSettingsPref
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(stringResource(R.string.settings_cache_cap_title), color = Color.White, fontSize = 16.sp)
+        Text(
+            stringResource(R.string.settings_cache_cap_detail),
+            color = Color(0xFFB3B3B3), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .horizontalScroll(rememberScrollState()),
+        ) {
+            val options = listOf(
+                500 to "500 MB",
+                1000 to "1 GB",
+                2000 to "2 GB",
+                5000 to "5 GB",
+                0 to "Unlimited",
+            )
+            for ((mb, label) in options) {
+                val selected = pref.cacheCapMb == mb
+                Text(
+                    label,
+                    color = if (selected) Color.Black else Color.White, fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) com.music.spotui.ui.theme.AppAccent else Color(0xFF282828))
+                        .clickable { pref.setCapMb(ctx, mb) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClearCacheRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var sizeText by remember(com.music.spotui.data.cache.PlaybackCacheStore.cachedTracks.size) {
+        mutableStateOf(android.text.format.Formatter.formatShortFileSize(ctx, com.music.spotui.data.cache.PlaybackCacheStore.totalBytes()))
+    }
+    Column(
+        Modifier.fillMaxWidth()
+            .clickable {
+                com.music.spotui.data.cache.PlaybackCacheStore.clearAll()
+                sizeText = android.text.format.Formatter.formatShortFileSize(ctx, com.music.spotui.data.cache.PlaybackCacheStore.totalBytes())
+                android.widget.Toast.makeText(ctx, "Playback cache cleared", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text(stringResource(R.string.settings_clear_cache_title), color = Color.White, fontSize = 16.sp)
+        Text(
+            stringResource(R.string.settings_clear_cache_detail, sizeText),
+            color = Color(0xFFB3B3B3), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+
+@Composable
+private fun DeveloperModeSection() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val devEnabled = com.music.spotui.data.preferences.DeveloperModePref.on
+    var filterErrorsOnly by remember { mutableStateOf(false) }
+    var showEngineLogTail by remember { mutableStateOf(true) }
+    var refreshTick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    Text(
+        "DEVELOPER",
+        color = com.music.spotui.ui.theme.AppAccent,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+    )
+    OptionRow(
+        label = "Developer Mode",
+        detail = "Inspect live player state, runtime errors, bridge diagnostics, and debug tools",
+        checked = devEnabled,
+        onChecked = { com.music.spotui.data.preferences.DeveloperModePref.set(ctx, it) },
+    )
+    if (!devEnabled) return
+
+    androidx.compose.runtime.LaunchedEffect(devEnabled) {
+        while (devEnabled) {
+            kotlinx.coroutines.delay(2_000L)
+            refreshTick++
+        }
+    }
+
+    val runtimeStarted = app.myspoti.host.android.MyspotiRuntime.isStarted
+    val bridgeReady = if (runtimeStarted) runCatching { app.myspoti.host.android.MyspotiRuntime.api.ready.value }.getOrDefault(false) else false
+    val drmMissing = if (runtimeStarted) runCatching { app.myspoti.host.android.MyspotiRuntime.spotify.player.drmMissing.value }.getOrDefault(false) else false
+    val localActive = com.music.spotui.di.LocalPlayer.active.value
+    val np = com.music.spotui.di.SongPlayer.nowPlaying.value
+    val activeDev = com.music.spotui.di.SongPlayer.activeDevice.value
+    val online = com.music.spotui.data.offline.OfflineStore.isOnline(ctx)
+    val downloadedCount = com.music.spotui.data.offline.OfflineStore.tracks.size
+    val cachedCount = com.music.spotui.data.cache.PlaybackCacheStore.cachedTracks.size
+    val recapCount = remember(refreshTick) { runCatching { com.music.spotui.data.local.ListenHistory.all().size }.getOrDefault(0) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1E1E1E))
+            .padding(14.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = "Runtime & Player Diagnostics",
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+        )
+
+        val statusLines = remember(refreshTick, bridgeReady, drmMissing, localActive, np, activeDev, online, downloadedCount, cachedCount, recapCount) {
+            listOf(
+                "Engine Ready" to (if (bridgeReady) "READY (WebView Bridge Active)" else "WAITING / NOT READY"),
+                "Active Engine" to (if (localActive) "LocalPlayer (${if (com.music.spotui.di.LocalPlayer.fallbackMode) "BitChord/Cache" else "Local/Downloads"})" else "Spotify Web Player"),
+                "Playback State" to "playing=${com.music.spotui.di.SongPlayer.isPlaying()} buffering=${com.music.spotui.di.SongPlayer.isBuffering} episode=${com.music.spotui.di.SongPlayer.isEpisode}",
+                "Current URI / ID" to "${np.uri.ifBlank { "(none)" }} | id=${com.music.spotui.di.SongPlayer.currentTrackId.ifBlank { "(none)" }}",
+                "Context URI" to np.contextUri.ifBlank { "(none)" },
+                "Connect Device" to (activeDev?.let { "${it.name} (${it.id.take(8)})" } ?: "This Phone"),
+                "Widevine DRM" to (if (drmMissing) "MISSING (BitChord Fallback Active)" else "OK"),
+                "Network / Saver" to "online=$online | dataSaver=${com.music.spotui.data.DataSaver.active}",
+                "Storage & Recap" to "Downloads=$downloadedCount | Cached=$cachedCount | Recap Listens=$recapCount",
+            )
+        }
+
+        statusLines.forEach { (k, v) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+            ) {
+                Text(k, color = Color(0xFFB3B3B3), fontSize = 12.sp, modifier = Modifier.weight(0.38f))
+                Text(v, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(0.62f))
+            }
+        }
+
+        // Quick Debug Actions
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 4.dp),
+        ) {
+            DevActionPill("Restart Player") {
+                scope.launch {
+                    com.music.spotui.di.SongPlayer.restartPlayerEngine()
+                    android.widget.Toast.makeText(ctx, "Player engine restarted", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            DevActionPill("Test Recovery Modal") {
+                com.music.spotui.ui.components.PlayerRecoveryModal.promptPlaybackStuck("Debug Test Track")
+            }
+            DevActionPill("Copy Logs") {
+                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                val text = com.music.spotui.data.local.DeveloperLogStore.formatAll(includeEngineLog = true)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText("Spotifusion Debug Logs", text))
+                android.widget.Toast.makeText(ctx, "Debug logs copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            DevActionPill("Clear Logs") {
+                com.music.spotui.data.local.DeveloperLogStore.clear()
+                android.widget.Toast.makeText(ctx, "Developer logs cleared", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            DevActionPill("Clear Feed Cache") {
+                com.music.spotui.data.api.Api.HomeCache.clear()
+                com.music.spotui.data.api.EditablePlaylists.cachedList = null
+                android.widget.Toast.makeText(ctx, "Feed & screen caches cleared", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Filter toggles for the live error & event console
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        ) {
+            DevFilterChip("All Events", selected = !filterErrorsOnly) { filterErrorsOnly = false }
+            DevFilterChip("Errors & Warnings", selected = filterErrorsOnly) { filterErrorsOnly = true }
+            DevFilterChip(if (showEngineLogTail) "Hide Engine Log" else "Show Engine Log", selected = showEngineLogTail) {
+                showEngineLogTail = !showEngineLogTail
+            }
+        }
+
+        val devEntries = com.music.spotui.data.local.DeveloperLogStore.entries.filter {
+            !filterErrorsOnly || it.level != com.music.spotui.data.local.DeveloperLogStore.Level.INFO
+        }
+        val engineLines = remember(refreshTick, filterErrorsOnly, showEngineLogTail) {
+            if (!showEngineLogTail) emptyList()
+            else runCatching { app.myspoti.host.android.Logbook.recent().lines() }.getOrDefault(emptyList())
+                .filter { line ->
+                    line.isNotBlank() && (!filterErrorsOnly || line.contains("error", ignoreCase = true) || line.contains("fail", ignoreCase = true) || line.contains("refus", ignoreCase = true) || line.contains("402") || line.contains("warn", ignoreCase = true) || line.contains("timeout", ignoreCase = true))
+                }
+                .takeLast(45)
+                .asReversed()
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF121212))
+                .padding(10.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Live Console (${devEntries.size} dev events, ${engineLines.size} engine lines)",
+                color = com.music.spotui.ui.theme.AppAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            if (devEntries.isEmpty() && engineLines.isEmpty()) {
+                Text(
+                    text = "No matching errors or events recorded yet.",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                )
+            } else {
+                devEntries.take(25).forEach { entry ->
+                    val badgeColor = when (entry.level) {
+                        com.music.spotui.data.local.DeveloperLogStore.Level.ERROR -> Color(0xFFFF6B6B)
+                        com.music.spotui.data.local.DeveloperLogStore.Level.WARN -> Color(0xFFFFD166)
+                        com.music.spotui.data.local.DeveloperLogStore.Level.INFO -> Color(0xFF8ECAE6)
+                    }
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "${entry.timestamp} [${entry.level}/${entry.tag}] ${entry.message}",
+                            color = badgeColor,
+                            fontSize = 11.5.sp,
+                            lineHeight = 15.sp,
+                        )
+                        if (!entry.details.isNullOrBlank()) {
+                            Text(
+                                text = entry.details,
+                                color = Color(0xFFB3B3B3),
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp,
+                                maxLines = 4,
+                            )
+                        }
+                    }
+                }
+                engineLines.forEach { line ->
+                    val isErr = line.contains("error", ignoreCase = true) || line.contains("fail", ignoreCase = true) || line.contains("402") || line.contains("refus", ignoreCase = true)
+                    Text(
+                        text = line,
+                        color = if (isErr) Color(0xFFFF8A8A) else Color(0xFFD0D0D0),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DevActionPill(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        color = Color.Black,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(com.music.spotui.ui.theme.AppAccent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun AutoRestartPlayerSection() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pref = com.music.spotui.data.preferences.AutoRestartPlayerPref
+    OptionRow(
+        label = "Automatic player engine restart",
+        detail = "Automatically restart the player engine when playback gets stuck before prompting",
+        checked = pref.on,
+        onChecked = { pref.setOn(ctx, it) },
+    )
+    if (pref.on) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Text("Max auto-restart attempts", color = Color.White, fontSize = 15.sp)
+            Text(
+                "Number of automatic recovery attempts before showing the restart prompt",
+                color = Color(0xFFB3B3B3),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 10.dp),
+            ) {
+                for (count in listOf(1, 2, 3, 5)) {
+                    val selected = pref.maxAttempts == count
+                    Text(
+                        "$count ${if (count == 1) "attempt" else "attempts"}",
+                        color = if (selected) Color.Black else Color.White,
+                        fontSize = 13.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (selected) com.music.spotui.ui.theme.AppAccent else Color(0xFF2A2A2A))
+                            .clickable { pref.setAttempts(ctx, count) }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    )
+                }
+            }
+        }
+    }
+    Divider()
+}
+
+@Composable
+private fun DevFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = label,
+        color = if (selected) Color.Black else Color.White,
+        fontSize = 11.5.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) Color.White else Color(0xFF2C2C2C))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
