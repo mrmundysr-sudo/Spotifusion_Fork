@@ -85,10 +85,32 @@ jobs:
           target: google_apis
           working-directory: base
           script: |
-            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.music.spotui.data.offline.SharedAudioExporterTest
+            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.music.spotui.data.offline.SharedAudioExporterTest || touch ../tests-failed
+            adb logcat -d -s Export:V AndroidRuntime:E > ../export-logcat.txt || true
             adb shell ls -l /sdcard/Download/Spotifusion/ | tee ../shared-folder-listing.txt
             mkdir -p ../exported-evidence
             adb pull /sdcard/Download/Spotifusion/. ../exported-evidence/
+
+      - name: Instrumentation results
+        if: always()
+        working-directory: .
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          for f in sorted(glob.glob("base/app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True)):
+              r = ET.parse(f).getroot()
+              print(f, "tests=", r.get("tests"), "failures=", r.get("failures"), "errors=", r.get("errors"))
+              for tc in r.iter("testcase"):
+                  bad = tc.find("failure") if tc.find("failure") is not None else tc.find("error")
+                  print(("FAIL " if bad is not None else "PASS "), tc.get("name"))
+                  if bad is not None: print((bad.text or "")[:1500])
+          PY
+          cat export-logcat.txt 2>/dev/null | tail -60 || true
+          cat shared-folder-listing.txt 2>/dev/null || true
+
+      - name: Fail if the export test failed
+        working-directory: .
+        run: test ! -e tests-failed
 
       - name: Open the exported files with ffprobe / ffmpeg (independent of Android)
         working-directory: .
